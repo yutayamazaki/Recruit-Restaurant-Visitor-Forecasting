@@ -14,7 +14,7 @@ from sklearn.preprocessing import LabelEncoder
 sns.set_style('darkgrid')
 
 
-def get_logger(filename):
+def get_logger(filename: str) -> logging.Logger:
     format_ = '%(asctime)s:%(levelname)s:%(message)s'
     logging.basicConfig(filename=filename, level=logging.INFO,
                         format=format_)
@@ -23,7 +23,7 @@ def get_logger(filename):
     return logger
 
 
-def is_holiday(x):
+def is_holiday(x: str) -> int:
     if x in ['Sunday', 'Saturday']:
         return 1
     else:
