@@ -1,3 +1,11 @@
+# Custom
+.DS_Store
+input/*
+!input/.gitkeep
+logs/*
+!logs/.gitkeep
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
