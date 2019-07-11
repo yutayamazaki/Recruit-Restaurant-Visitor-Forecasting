@@ -2,6 +2,7 @@ from datetime import datetime
 import logging
 import pathlib
 
+from catboost import CatBoostRegressor
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -50,12 +51,83 @@ if __name__ == '__main__':
     df_id = pd.read_csv('input/store_id_relation.csv')
     air_store = pd.read_csv('input/air_store_info.csv')
     hpg_store = pd.read_csv('input/hpg_store_info.csv')
-    air_visit = pd.read_csv('./input/air_visit_data.csv')
+    hpg_res = pd.read_csv('input/hpg_reserve.csv')
+    air_visit = pd.read_csv('input/air_visit_data.csv')
 
     df_air = pd.merge(air_visit, air_store, on='air_store_id')
     assert df_air.shape == (air_visit.shape[0], 7), 'Fuckin shape'
 
+    air_res['visit_date'] = \
+        air_res['visit_datetime'].apply(lambda x: x.split(' ')[0])
+    air_res['diff_res_and_vis'] = (
+        pd.to_datetime(air_res['visit_datetime']) - \
+            pd.to_datetime(air_res['reserve_datetime'])).dt.days
+
+    groupby = air_res.groupby(['visit_date', 'air_store_id'], as_index=False)
+    reserve_mean = groupby.mean()
+    reserve_sum = groupby.sum()
+
+    reserve_mean.columns = ['visit_date', 'air_store_id',
+                            'reserve_visitors_mean_air', 'diff_res_and_vis_mean_air']
+    reserve_sum.columns = ['visit_date', 'air_store_id',
+                           'reserve_visitors_sum_air', 'diff_res_and_vis_sum_air']
+
+    reserve_feats = pd.merge(reserve_mean, reserve_sum, how='inner',
+                             on=['air_store_id', 'visit_date'])
+
+    prev_shape = df_air.shape[0]
+    df_air = pd.merge(df_air, reserve_feats,
+                      how='left', on=['visit_date', 'air_store_id'])
+    assert df_air.shape[0] == prev_shape, 'Fuckin shape'
+    new_cols = [
+        'reserve_visitors_mean_air', 'reserve_visitors_sum_air',
+        'diff_res_and_vis_mean_air', 'diff_res_and_vis_sum_air'
+    ]
+    for c in new_cols:
+        fill_val = df_air[c].mean()
+        df_air[c].fillna(fill_val, inplace=True)
+
+    hpg_res = pd.merge(hpg_res, df_id, how='left',
+                       on=['hpg_store_id']).dropna(axis=0, how='any')
+    hpg_res['visit_date'] = \
+        hpg_res['visit_datetime'].apply(lambda x: x.split(' ')[0])
+    hpg_res['diff_res_and_vis'] = (
+        pd.to_datetime(hpg_res['visit_datetime']) - \
+            pd.to_datetime(hpg_res['reserve_datetime'])).dt.days
+
+    groupby = hpg_res.groupby(['visit_date', 'air_store_id'], as_index=False)
+    reserve_mean = groupby.mean()
+    reserve_sum = groupby.sum()
+
+    reserve_mean.columns = ['visit_date', 'air_store_id',
+                            'reserve_visitors_mean_hpg', 'diff_res_and_vis_mean_hpg']
+    reserve_sum.columns = ['visit_date', 'air_store_id',
+                           'reserve_visitors_sum_hpg', 'diff_res_and_vis_sum_hpg']
+
+    reserve_feats = pd.merge(reserve_mean, reserve_sum, how='inner',
+                             on=['air_store_id', 'visit_date'])
+
+    prev_shape = df_air.shape[0]
+    df_air = pd.merge(df_air, reserve_feats,
+                      how='left', on=['visit_date', 'air_store_id'])
+
+    assert df_air.shape[0] == prev_shape, 'Fuckin shape'
+    new_cols = [
+        'reserve_visitors_mean_hpg', 'reserve_visitors_sum_hpg',
+        'diff_res_and_vis_mean_hpg', 'diff_res_and_vis_sum_hpg'
+    ]
+    for c in new_cols:
+        fill_val = df_air[c].mean()
+        df_air[c].fillna(fill_val, inplace=True)
+
     # Feature Engineering
+    reserve_cols = [
+        'reserve_visitors_mean', 'reserve_visitors_sum',
+        'diff_res_and_vis_mean', 'diff_res_and_vis_sum'
+    ]
+    for c in reserve_cols:
+        df_air[c] = df_air[f'{c}_hpg'] + df_air[f'{c}_air']
+
     df_air['air_prefecture'] = \
         df_air['air_area_name'].apply(lambda x: x.split(' ')[0])
 
@@ -75,6 +147,8 @@ if __name__ == '__main__':
 
     saturday_or_sunday = df_air['day_of_week'].apply(is_holiday)
     df_air['holiday_flg'] = saturday_or_sunday | df_air['holiday_flg']
+    df_air['prev_day_is_holiday'] = df_air['holiday_flg'].shift().fillna(0)
+    df_air['next_day_is_holiday'] = df_air['holiday_flg'].shift(-1).fillna(0)
 
     categoricals = ['air_store_id', 'air_genre_name', 'air_area_name',
                     'air_prefecture', 'day_of_week']
@@ -96,19 +170,22 @@ if __name__ == '__main__':
     for cv_idx, (train_idx, valid_idx) in enumerate(cv.split(X, y)):
         X_train, X_valid = X.iloc[train_idx], X.iloc[valid_idx]
         y_train, y_valid = y[train_idx], y[valid_idx]
-        
-        model = GradientBoostingRegressor()
-        model.fit(X_train, y_train)
 
+        model = CatBoostRegressor(
+            loss_function='RMSE',
+            learning_rate=0.1,
+        )
+        model.fit(X_train, y_train)
         y_pred = model.predict(X_valid)
 
         rmse = np.sqrt(metrics.mean_squared_error(y_valid, y_pred))
         cv_scores.append(rmse)
         feat_imp['importance'] += model.feature_importances_ / n_splits
 
-        logger.info(f'[CV: {cv_idx+1}/{n_splits}]  [RMSE: {rmse:.5f}]')
+    for idx in range(n_splits):
+        logger.info(f'[CV: {idx+1}/{n_splits}]  [RMSE: {cv_scores[idx]:.5f}]')
 
-    logger.info(f'Mean RMSE: {np.mean(cv_scores)}')
+    logger.info(f'RMSE: {np.mean(cv_scores)}±{np.std(cv_scores)}')
     feat_imp = feat_imp['importance'].sort_values(ascending=False)
     logger.info(f'Feature Importance')
     logger.info(f'{feat_imp}')
