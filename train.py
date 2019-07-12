@@ -50,21 +50,22 @@ if __name__ == '__main__':
     df_id = pd.read_csv('input/store_id_relation.csv')
     hpg_store = pd.read_csv('input/hpg_store_info.csv')
 
+    air_visit = pd.read_csv('input/air_visit_data.csv')
+    air_store = pd.read_csv('input/air_store_info.csv')
+    hpg_store = pd.merge(hpg_store, df_id, on='hpg_store_id', how='left').dropna(axis=0, how='any')
+    air_store = pd.merge(air_store, hpg_store[['hpg_genre_name', 'air_store_id']], on='air_store_id', how='left')
+    air_store['hpg_genre_name'].fillna('unk', inplace=True)
+    df_air = pd.merge(air_visit, air_store, how='left', on='air_store_id')
+    assert df_air.shape[0] == air_visit.shape[0], 'Fuckin shape'
+
     data = {
         'ar': pd.read_csv('input/air_reserve.csv'),
         'hr': pd.read_csv('input/hpg_reserve.csv'),
     }
-
-    air_visit = pd.read_csv('input/air_visit_data.csv')
-    air_store = pd.read_csv('input/air_store_info.csv')
-    df_air = pd.merge(air_visit, air_store, how='left', on='air_store_id')
-    assert df_air.shape == (air_visit.shape[0], 7), 'Fuckin shape'
-
     for key in ['ar', 'hr']:
         if key == 'hr':
             data[key] = pd.merge(
-                data[key],
-                df_id,
+                data[key], df_id,
                 how='left',
                 on=['hpg_store_id']).dropna(axis=0, how='any')
 
@@ -117,10 +118,20 @@ if __name__ == '__main__':
     df_air['air_prefecture'] = \
         df_air['air_area_name'].apply(lambda x: x.split(' ')[0])
 
+    df_air['latitude_minus_mean'] = \
+        df_air['latitude'] - df_air['latitude'].mean()
+    df_air['longitude_minus_mean'] = \
+        df_air['longitude'] - df_air['longitude'].mean()
+    df_air['longitude_plus_latitude'] = \
+        df_air['longitude'] + df_air['latitude']
+
     df_air['year'] = df_air['visit_date'].apply(lambda x: x.split('-')[0])
     df_air['month'] = df_air['visit_date'].apply(lambda x: x.split('-')[1])
     df_air['day'] = df_air['visit_date'].apply(lambda x: x.split('-')[2])
-    for c in ['year', 'month', 'day']:
+    df_air['visit_date'] = pd.to_datetime(df_air['visit_date'])
+    df_air['week'] = df_air['visit_date'].dt.week
+    df_air['visit_date'] = df_air['visit_date'].astype(str)
+    for c in ['year', 'month', 'week', 'day']:
         df_air[c] = df_air[c].astype(int)
         df_air[f'{c}_sin'] = date_encode_sin(df_air[c])
         df_air[f'{c}_cos'] = date_encode_cos(df_air[c])
@@ -136,8 +147,13 @@ if __name__ == '__main__':
     df_air['prev_day_is_holiday'] = df_air['holiday_flg'].shift().fillna(0)
     df_air['next_day_is_holiday'] = df_air['holiday_flg'].shift(-1).fillna(0)
 
-    categoricals = ['air_store_id', 'air_genre_name', 'air_area_name',
-                    'air_prefecture', 'day_of_week']
+    df_air['genre'] = df_air['air_genre_name'] + df_air['hpg_genre_name']
+    df_air['genre_area'] = df_air['genre'] + df_air['air_prefecture']
+
+    categoricals = [
+        'air_store_id', 'air_genre_name', 'air_area_name', 'air_prefecture',
+        'day_of_week', 'hpg_genre_name', 'genre', 'genre_area'
+    ]
     for c in categoricals:
         encoder = df_air[c].value_counts()
         df_air[f'{c}_cnt_enc'] = df_air[c].map(encoder)
