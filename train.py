@@ -47,78 +47,64 @@ logger = get_logger(logger_path)
 
 if __name__ == '__main__':
     # Data Preprocessing
-    air_res = pd.read_csv('input/air_reserve.csv')
     df_id = pd.read_csv('input/store_id_relation.csv')
-    air_store = pd.read_csv('input/air_store_info.csv')
     hpg_store = pd.read_csv('input/hpg_store_info.csv')
-    hpg_res = pd.read_csv('input/hpg_reserve.csv')
-    air_visit = pd.read_csv('input/air_visit_data.csv')
 
-    df_air = pd.merge(air_visit, air_store, on='air_store_id')
+    data = {
+        'ar': pd.read_csv('input/air_reserve.csv'),
+        'hr': pd.read_csv('input/hpg_reserve.csv'),
+    }
+
+    air_visit = pd.read_csv('input/air_visit_data.csv')
+    air_store = pd.read_csv('input/air_store_info.csv')
+    df_air = pd.merge(air_visit, air_store, how='left', on='air_store_id')
     assert df_air.shape == (air_visit.shape[0], 7), 'Fuckin shape'
 
-    air_res['visit_date'] = \
-        air_res['visit_datetime'].apply(lambda x: x.split(' ')[0])
-    air_res['diff_res_and_vis'] = (
-        pd.to_datetime(air_res['visit_datetime']) - \
-            pd.to_datetime(air_res['reserve_datetime'])).dt.days
+    for key in ['ar', 'hr']:
+        if key == 'hr':
+            data[key] = pd.merge(
+                data[key],
+                df_id,
+                how='left',
+                on=['hpg_store_id']).dropna(axis=0, how='any')
 
-    groupby = air_res.groupby(['visit_date', 'air_store_id'], as_index=False)
-    reserve_mean = groupby.mean()
-    reserve_sum = groupby.sum()
+        data[key]['visit_date'] = \
+            data[key]['visit_datetime'].apply(lambda x: x.split(' ')[0])
+        data[key]['diff_res_and_vis'] = (
+            pd.to_datetime(data[key]['visit_datetime']) - \
+                pd.to_datetime(data[key]['reserve_datetime'])).dt.days
 
-    reserve_mean.columns = ['visit_date', 'air_store_id',
-                            'reserve_visitors_mean_air', 'diff_res_and_vis_mean_air']
-    reserve_sum.columns = ['visit_date', 'air_store_id',
-                           'reserve_visitors_sum_air', 'diff_res_and_vis_sum_air']
+        groupby = data[key].groupby(['visit_date', 'air_store_id'],
+                                    as_index=False)
+        reserve_mean = groupby.mean()
+        reserve_sum = groupby.sum()
 
-    reserve_feats = pd.merge(reserve_mean, reserve_sum, how='inner',
-                             on=['air_store_id', 'visit_date'])
+        for method in ['mean', 'sum']:
+            columns = {
+                'visit_date': 'visit_date',
+                'air_store_id': 'air_store_id',
+                'reserve_visitors': f'reserve_visitors_{method}_{key}',
+                'diff_res_and_vis': f'diff_res_and_vis_{method}_{key}'
+            }
+            if method == 'mean':
+                reserve_mean.rename(columns=columns, inplace=True)
+            elif method == 'sum':
+                reserve_sum.rename(columns=columns, inplace=True)
 
-    prev_shape = df_air.shape[0]
-    df_air = pd.merge(df_air, reserve_feats,
-                      how='left', on=['visit_date', 'air_store_id'])
-    assert df_air.shape[0] == prev_shape, 'Fuckin shape'
-    new_cols = [
-        'reserve_visitors_mean_air', 'reserve_visitors_sum_air',
-        'diff_res_and_vis_mean_air', 'diff_res_and_vis_sum_air'
-    ]
-    for c in new_cols:
-        fill_val = df_air[c].mean()
-        df_air[c].fillna(fill_val, inplace=True)
+        reserve_feats = pd.merge(reserve_mean, reserve_sum, how='inner',
+                                 on=['air_store_id', 'visit_date'])
 
-    hpg_res = pd.merge(hpg_res, df_id, how='left',
-                       on=['hpg_store_id']).dropna(axis=0, how='any')
-    hpg_res['visit_date'] = \
-        hpg_res['visit_datetime'].apply(lambda x: x.split(' ')[0])
-    hpg_res['diff_res_and_vis'] = (
-        pd.to_datetime(hpg_res['visit_datetime']) - \
-            pd.to_datetime(hpg_res['reserve_datetime'])).dt.days
-
-    groupby = hpg_res.groupby(['visit_date', 'air_store_id'], as_index=False)
-    reserve_mean = groupby.mean()
-    reserve_sum = groupby.sum()
-
-    reserve_mean.columns = ['visit_date', 'air_store_id',
-                            'reserve_visitors_mean_hpg', 'diff_res_and_vis_mean_hpg']
-    reserve_sum.columns = ['visit_date', 'air_store_id',
-                           'reserve_visitors_sum_hpg', 'diff_res_and_vis_sum_hpg']
-
-    reserve_feats = pd.merge(reserve_mean, reserve_sum, how='inner',
-                             on=['air_store_id', 'visit_date'])
-
-    prev_shape = df_air.shape[0]
-    df_air = pd.merge(df_air, reserve_feats,
-                      how='left', on=['visit_date', 'air_store_id'])
-
-    assert df_air.shape[0] == prev_shape, 'Fuckin shape'
-    new_cols = [
-        'reserve_visitors_mean_hpg', 'reserve_visitors_sum_hpg',
-        'diff_res_and_vis_mean_hpg', 'diff_res_and_vis_sum_hpg'
-    ]
-    for c in new_cols:
-        fill_val = df_air[c].mean()
-        df_air[c].fillna(fill_val, inplace=True)
+        prev_shape = df_air.shape[0]
+        df_air = pd.merge(df_air, reserve_feats,
+                          how='left', on=['visit_date', 'air_store_id'])
+        assert df_air.shape[0] == prev_shape, 'Fuckin shape'
+        new_cols = [
+            f'reserve_visitors_mean_{key}', f'reserve_visitors_sum_{key}',
+            f'diff_res_and_vis_mean_{key}', f'diff_res_and_vis_sum_{key}'
+        ]
+        for c in new_cols:
+            fill_val = df_air[c].mean()
+            df_air[c].fillna(fill_val, inplace=True)
 
     # Feature Engineering
     reserve_cols = [
@@ -126,7 +112,7 @@ if __name__ == '__main__':
         'diff_res_and_vis_mean', 'diff_res_and_vis_sum'
     ]
     for c in reserve_cols:
-        df_air[c] = df_air[f'{c}_hpg'] + df_air[f'{c}_air']
+        df_air[c] = df_air[f'{c}_hr'] + df_air[f'{c}_ar']
 
     df_air['air_prefecture'] = \
         df_air['air_area_name'].apply(lambda x: x.split(' ')[0])
@@ -165,7 +151,6 @@ if __name__ == '__main__':
 
     cv = KFold(n_splits=n_splits)
     cv_scores = []
-    feat_imp = np.zeros_like(X.columns)
     feat_imp = pd.DataFrame(np.zeros_like(X.columns), columns=['importance'], index=X.columns)
     for cv_idx, (train_idx, valid_idx) in enumerate(cv.split(X, y)):
         X_train, X_valid = X.iloc[train_idx], X.iloc[valid_idx]
