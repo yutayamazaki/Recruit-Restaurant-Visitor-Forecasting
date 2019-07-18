@@ -12,7 +12,7 @@ pipenv shell
 ```
 
 ### Overview
-リクルートによるレストラン来客数予測コンペ  
+[Recruit Restaurant Visitor Forecasting](https://www.kaggle.com/c/recruit-restaurant-visitor-forecasting/)という，リクルートによるレストラン来客数予測コンペ  
 評価指標はRMSLEであり，以下の式で計算される(詳細や実装は[notebooks/EDA.ipynb](https://github.com/yutayamazaki/Recruit-Restaurant-Visitor-Forecasting/blob/master/notebooks/EDA.ipynb)に)  
 
 <img src="https://latex.codecogs.com/gif.latex?RMSLE=\sqrt{\frac{1}{n}\sum_{i=1}^{n}(log(p_i+1)-log(a_i+1))^2}"/>
