@@ -161,6 +161,13 @@ if __name__ == '__main__':
         le = LabelEncoder().fit(df_air[c].values)
         df_air[f'{c}'] = le.transform(df_air[c].values)
 
+    mean_vistors = df_air['visitors'].mean()
+    for span in [7, 30]:
+        by_id = df_air.groupby('air_store_id')['visitors']
+        rolling_mean = by_id.rolling(span, min_periods=1).mean()
+        rolling_mean = rolling_mean.shift(1).fillna(mean_vistors)
+        df_air[f'ma{span}'] = rolling_mean.reset_index(0, drop=True)
+
     # Training
     X = df_air.drop(['visit_date', 'visitors', 'calendar_date'], axis=1)
     y = np.log1p(df_air['visitors'].values)
