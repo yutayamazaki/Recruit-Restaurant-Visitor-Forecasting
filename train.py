@@ -9,7 +9,7 @@ import pandas as pd
 import seaborn as sns
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn import metrics
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, GroupKFold
 from sklearn.preprocessing import LabelEncoder
 
 sns.set_style('darkgrid')
@@ -165,10 +165,11 @@ if __name__ == '__main__':
     X = df_air.drop(['visit_date', 'visitors', 'calendar_date'], axis=1)
     y = np.log1p(df_air['visitors'].values)
 
-    cv = KFold(n_splits=n_splits)
+    # cv = KFold(n_splits=n_splits)
+    cv = GroupKFold(n_splits=n_splits)
     cv_scores = []
     feat_imp = pd.DataFrame(np.zeros_like(X.columns), columns=['importance'], index=X.columns)
-    for cv_idx, (train_idx, valid_idx) in enumerate(cv.split(X, y)):
+    for cv_idx, (train_idx, valid_idx) in enumerate(cv.split(X, y, df_air['air_store_id'])):
         X_train, X_valid = X.iloc[train_idx], X.iloc[valid_idx]
         y_train, y_valid = y[train_idx], y[valid_idx]
 
@@ -186,7 +187,7 @@ if __name__ == '__main__':
     for idx in range(n_splits):
         logger.info(f'[CV: {idx+1}/{n_splits}]  [RMSE: {cv_scores[idx]:.5f}]')
 
-    logger.info(f'RMSE: {np.mean(cv_scores)}±{np.std(cv_scores)}')
+    logger.info(f'RMSLE: {np.mean(cv_scores)}±{np.std(cv_scores)}')
     feat_imp = feat_imp['importance'].sort_values(ascending=False)
     logger.info(f'Feature Importance')
     logger.info(f'{feat_imp}')
