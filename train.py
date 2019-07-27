@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from sklearn.ensemble import GradientBoostingRegressor
 from sklearn import metrics
 from sklearn.model_selection import KFold, GroupKFold
 from sklearn.preprocessing import LabelEncoder
@@ -162,11 +161,19 @@ if __name__ == '__main__':
         df_air[f'{c}'] = le.transform(df_air[c].values)
 
     mean_vistors = df_air['visitors'].mean()
+    std_vistors = df_air['visitors'].std()
     for span in [7, 30]:
         by_id = df_air.groupby('air_store_id')['visitors']
-        rolling_mean = by_id.rolling(span, min_periods=1).mean()
-        rolling_mean = rolling_mean.shift(1).fillna(mean_vistors)
+        rolling = by_id.rolling(span, min_periods=1)
+
+        rolling_mean = rolling.mean().shift(1).fillna(mean_vistors)
         df_air[f'ma{span}'] = rolling_mean.reset_index(0, drop=True)
+        rolling_max = rolling.max().shift(1).fillna(mean_vistors)
+        df_air[f'max_in_{span}'] = rolling_max.reset_index(0, drop=True)
+        rolling_min = rolling.min().shift(1).fillna(mean_vistors)
+        df_air[f'min_in_{span}'] = rolling_min.reset_index(0, drop=True)
+        rolling_std = rolling.std().shift(1).fillna(std_vistors)
+        df_air[f'std_in_{span}'] = rolling_std.reset_index(0, drop=True)
 
     # Training
     X = df_air.drop(['visit_date', 'visitors', 'calendar_date'], axis=1)
