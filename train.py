@@ -172,7 +172,6 @@ if __name__ == '__main__':
     X = df_air.drop(['visit_date', 'visitors', 'calendar_date'], axis=1)
     y = np.log1p(df_air['visitors'].values)
 
-    # cv = KFold(n_splits=n_splits)
     cv = GroupKFold(n_splits=n_splits)
     cv_scores = []
     feat_imp = pd.DataFrame(np.zeros_like(X.columns), columns=['importance'], index=X.columns)
